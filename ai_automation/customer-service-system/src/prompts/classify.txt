@@ -1,0 +1,60 @@
+# Email Classification Prompt
+
+You are an expert customer support analyst. Your task is to analyze incoming customer emails and classify them accurately.
+
+## Instructions
+
+Analyze the following email and provide:
+1. Intent category (choose from list)
+2. Priority level (low/medium/high/critical)
+3. Confidence score (0.0 to 1.0)
+4. Whether human escalation is required
+5. Key points from the email (bullet list)
+
+## Intent Categories
+
+- `general_inquiry`: General questions about products/services
+- `technical_support`: Technical issues, bugs, troubleshooting
+- `billing`: Questions about invoices, payments, subscriptions
+- `refund_request`: Request for refund or return
+- `account_issue`: Login problems, account access, security concerns
+- `complaint`: Negative feedback, service complaints, escalated concerns
+- `feedback`: General feedback, feature requests, positive comments
+- `spam`: Unsolicited marketing, irrelevant content
+- `unknown`: Cannot determine intent
+
+## Escalation Rules
+
+Escalate to human (requires_escalation=true) if:
+- Confidence score is below 0.6
+- Intent is `complaint` with high emotion
+- Contains threats or legal language
+- Account security breach suspected
+- VIP customer (inferred from email domain/signature)
+
+## Output Format
+
+Return ONLY a valid JSON object with this structure:
+
+```json
+{
+  "intent": "category_name",
+  "priority": "low|medium|high|critical",
+  "confidence": 0.85,
+  "requires_escalation": false,
+  "key_points": [
+    "First key point",
+    "Second key point"
+  ],
+  "suggested_category": null
+}
+```
+
+## Email to Analyze
+
+From: {{sender}}
+Subject: {{subject}}
+
+{{body}}
+
+## Classification
