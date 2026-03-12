@@ -34,8 +34,100 @@ class EmailService:
 
     def fetch_unread(self) -> Generator[CustomerEmail, None, None]:
         """Fetch unread emails from inbox."""
-        # TODO: Implement email fetching logic
-        pass
+        try:
+            client = self.connect_imap()
+            client.select(self._settings.folder)
+
+            # Search for unread messages
+            _, message_ids = client.search(None, "(UNSEEN)")
+            message_ids = message_ids[0].split()
+
+            logger.info(f"Found {len(message_ids)} unread emails")
+
+            for msg_id in message_ids:
+                try:
+                    _, msg_data = client.fetch(msg_id, "(RFC822)")
+                    raw_email = msg_data[0][1]
+
+                    # Parse email
+                    import email
+
+                    msg = email.message_from_bytes(raw_email)
+
+                    # Extract content
+                    body_text = ""
+                    body_html = None
+
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            content_type = part.get_content_type()
+                            if content_type == "text/plain":
+                                body_text = part.get_payload(decode=True).decode(
+                                    "utf-8", errors="ignore"
+                                )
+                            elif content_type == "text/html":
+                                body_html = part.get_payload(decode=True).decode(
+                                    "utf-8", errors="ignore"
+                                )
+                    else:
+                        body_text = msg.get_payload(decode=True).decode(
+                            "utf-8", errors="ignore"
+                        )
+
+                    # Parse sender
+                    from_header = msg.get("From", "")
+                    sender_email = from_header
+                    sender_name = ""
+
+                    import re
+
+                    match = re.match(r"^(.*?)\s*<(.+?)>$", from_header)
+                    if match:
+                        sender_name = match.group(1).strip('"')
+                        sender_email = match.group(2)
+
+                    from datetime import datetime
+
+                    metadata = EmailMetadata(
+                        message_id=msg.get("Message-ID", ""),
+                        thread_id=msg.get("In-Reply-To", None),
+                        received_at=datetime.now(),  # Parse from date header ideally
+                        subject=msg.get("Subject", "No Subject"),
+                        sender=sender_email,
+                        sender_name=sender_name,
+                        to=[addr.strip() for addr in msg.get("To", "").split(",")],
+                        cc=[
+                            addr.strip()
+                            for addr in msg.get("Cc", "").split(",")
+                            if addr.strip()
+                        ],
+                    )
+
+                    content = EmailContent(
+                        body_text=body_text,
+                        body_html=body_html,
+                    )
+
+                    from src.utils.helpers import generate_id
+
+                    email_obj = CustomerEmail(
+                        id=generate_id(),
+                        metadata=metadata,
+                        content=content,
+                    )
+
+                    yield email_obj
+
+                except Exception as e:
+                    logger.error(f"Failed to parse email {msg_id}: {e}")
+                    continue
+
+            client.close()
+            client.logout()
+
+        except Exception as e:
+            logger.error(f"Failed to fetch emails: {e}")
+            raise EmailClientError(f"Fetch failed: {e}") from e
 
     def send_response(
         self,
